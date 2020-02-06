@@ -2,6 +2,7 @@ defmodule ParallelDownload.HTTPClient do
   @moduledoc """
   API on :httpc
   """
+  use GenServer, restart: :transient
   require Logger
 
   alias ParallelDownload.DownloadTask
@@ -10,13 +11,22 @@ defmodule ParallelDownload.HTTPClient do
   alias ParallelDownload.FileUtils
   alias ParallelDownload.TaskUtils
 
+  def start_link(args) do
+    GenServer.start_link(__MODULE__, args)
+  end
+
+  @impl true
+  def init({parent_pid}) do
+    {:ok, %{parent_pid: parent_pid}}
+  end
+
   @doc """
   Starts file download process by given url.
   Second parameter is download chunk size in bytes.
   Stream is a stream to send data.
   """
-  @spec run_request(binary(), pos_integer(), binary()) :: {:ok, binary()} | {:error, term()}
-  def run_request(url, chunk_size_bytes, path_to_save) do
+  @spec run_request(binary(), pos_integer(), binary(), pid()) :: any()
+  def run_request(url, chunk_size_bytes, path_to_save, parent_pid) do
     Logger.info("Start to download file from url: #{url},
     chunk size: #{chunk_size_bytes},
     path to save: #{path_to_save}")
@@ -33,13 +43,17 @@ defmodule ParallelDownload.HTTPClient do
         |> FileUtils.merge_files!(path_to_save)
 
         Logger.info("Successfully merged chunk files in to: #{path_to_save}")
-        {:ok, path_to_save}
+
+        send(parent_pid, {:ok, path_to_save})
+        time_to_die()
 
       {false, _, _} ->
-        {:error, :server_error}
+        send(parent_pid, {:error, :server_error})
+        time_to_die()
 
       {_, false, _} ->
-        {:error, :not_supported}
+        send(parent_pid, {:error, :not_supported})
+        time_to_die()
     end
   end
 
@@ -70,5 +84,29 @@ defmodule ParallelDownload.HTTPClient do
       )
     end)
     |> Enum.map(&Task.await(&1, task_timeout))
+  end
+
+  @impl true
+  def handle_info(:kill, state) do
+    {:stop, :normal, state}
+  end
+
+  @impl true
+  def handle_cast({:download, url, chunk_size_bytes, path_to_save}, %{parent_pid: pid} = state) do
+    run_request(url, chunk_size_bytes, path_to_save, pid)
+    {:noreply, state}
+  end
+
+  @impl true
+  def terminate(reason, state) do
+    Logger.info(
+      "HTTPClient is terminating with reason: #{inspect(reason)}, state: #{inspect(state)}"
+    )
+
+    state
+  end
+
+  defp time_to_die do
+    send(self(), :kill)
   end
 end

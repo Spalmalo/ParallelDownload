@@ -6,9 +6,9 @@ defmodule ParallelDownload.Supervisor do
   end
 
   @doc """
-  Starts new ParallelDownload.HTTPClient with given arguments and adds it to supervisor.
+  Starts new ParallelDownload.HTTPClient with given a rguments and adds it to supervisor.
   """
-  def start_client(args) do
+  def start_client(args \\ nil) do
     spec = {ParallelDownload.HTTPClient, args}
     DynamicSupervisor.start_child(__MODULE__, spec)
   end
