@@ -20,6 +20,10 @@ defmodule ParallelDownload.DownloadTask do
       {:ok, :saved_to_file} ->
         Logger.info("Successfully saved to file #{inspect(chunk_file_path)}")
         {:ok, chunk_file_path, index}
+
+      {:error, reason} ->
+        Logger.error("Error of chunk downloading by url: #{url}, error: #{inspect(reason)} ")
+        {:error, reason}
     end
   end
 end
