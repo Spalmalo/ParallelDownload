@@ -2,6 +2,8 @@ defmodule ParallelDownload.HTTPClient do
   @moduledoc """
   API on :httpc
   """
+  require Logger
+
   alias ParallelDownload.DownloadTask
   alias ParallelDownload.HeadTask
   alias ParallelDownload.TaskSupervisor
@@ -15,6 +17,10 @@ defmodule ParallelDownload.HTTPClient do
   """
   @spec run_request(binary(), pos_integer(), binary()) :: {:ok, binary()} | {:error, term()}
   def run_request(url, chunk_size_bytes, path_to_save) do
+    Logger.info("Start to download file from url: #{url},
+    chunk size: #{chunk_size_bytes},
+    path to save: #{path_to_save}")
+
     task_timeout = Application.get_env(:parallel_download, :task_await_timeout)
 
     start_head_request(url, task_timeout)
@@ -26,6 +32,7 @@ defmodule ParallelDownload.HTTPClient do
         |> TaskUtils.extract_chunk_files()
         |> FileUtils.merge_files!(path_to_save)
 
+        Logger.info("Successfully merged chunk files in to: #{path_to_save}")
         {:ok, path_to_save}
 
       {false, _, _} ->

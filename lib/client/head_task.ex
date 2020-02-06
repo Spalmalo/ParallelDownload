@@ -2,7 +2,7 @@ defmodule ParallelDownload.HeadTask do
   @moduledoc """
   Module for HEAD HTTP request.
   """
-
+  require Logger
   alias ParallelDownload.HTTPUtils
 
   @doc """
@@ -16,8 +16,13 @@ defmodule ParallelDownload.HeadTask do
   """
   @spec head_request(binary()) :: {boolean(), boolean(), pos_integer()}
   def head_request(url) when is_binary(url) do
+    Logger.info("Start HEAD request for url: #{inspect(url)} ")
     request = HTTPUtils.request_for_url(url)
-    {:ok, {status, response_data, _}} = :httpc.request(:head, request, [], [])
+    {:ok, {status, response_data, _} = response} = :httpc.request(:head, request, [], [])
+
+    Logger.info(
+      "Response for HEAD request for url #{inspect(url)}: #{inspect(response, pretty: true)}"
+    )
 
     {
       HTTPUtils.http_status_ok?(status),
