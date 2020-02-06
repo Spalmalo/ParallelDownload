@@ -7,7 +7,7 @@ defmodule ParallelDownload.HTTPClient do
 
   alias ParallelDownload.DownloadTask
   alias ParallelDownload.HeadTask
-  alias ParallelDownload.TaskSupervisor
+
   alias ParallelDownload.FileUtils
   alias ParallelDownload.TaskUtils
 
@@ -64,7 +64,7 @@ defmodule ParallelDownload.HTTPClient do
   """
   @spec start_head_request(binary(), any()) :: {boolean(), boolean(), pos_integer()}
   def start_head_request(url, task_timeout) do
-    Task.Supervisor.async(TaskSupervisor, fn -> HeadTask.head_request(url) end)
+    Task.async(fn -> HeadTask.head_request(url) end)
     |> Task.await(task_timeout)
   end
 
@@ -77,11 +77,7 @@ defmodule ParallelDownload.HTTPClient do
     TaskUtils.tasks_with_order(content_length, chunk_size)
     |> Enum.map(fn {header, index} ->
       chunk_tmp_file = FileUtils.create_tmp_file!()
-
-      Task.Supervisor.async(
-        TaskSupervisor,
-        fn -> DownloadTask.chunk_request(url, [header], chunk_tmp_file, index) end
-      )
+      Task.async(fn -> DownloadTask.chunk_request(url, [header], chunk_tmp_file, index) end)
     end)
     |> Enum.map(&Task.await(&1, task_timeout))
   end

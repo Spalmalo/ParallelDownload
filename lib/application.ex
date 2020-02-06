@@ -4,8 +4,7 @@ defmodule ParallelDownload.Application do
   def start(_type, _args) do
     Supervisor.start_link(
       [
-        ParallelDownload.Supervisor,
-        {Task.Supervisor, name: ParallelDownload.TaskSupervisor}
+        ParallelDownload.Supervisor
       ],
       strategy: :one_for_one
     )
