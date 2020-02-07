@@ -14,14 +14,14 @@ defmodule ParallelDownload.HeadTask do
   Second element of tuple shows server accepts range requests. It is true if server returns "accept-ranges: bytes".
   Third element of tuple is content-length of file in bytes.
   """
-  @spec head_request(binary()) :: {boolean(), boolean(), pos_integer()}
-  def head_request(url) when is_binary(url) do
-    Logger.info("Start HEAD request for url: #{inspect(url)} ")
-    request = HTTPUtils.request_for_url(url)
-    {:ok, {status, response_data, _} = response} = :httpc.request(:head, request, [], [])
+  @spec head_request(tuple(), keyword()) :: {boolean(), boolean(), non_neg_integer()}
+  def head_request(request, http_opts) do
+    Logger.info("Start HEAD request: #{inspect(request)} ")
+
+    {:ok, {status, response_data, _} = response} = :httpc.request(:head, request, http_opts, [])
 
     Logger.info(
-      "Response for HEAD request for url #{inspect(url)}: #{inspect(response, pretty: true)}"
+      "Response for HEAD request #{inspect(request)}: #{inspect(response, pretty: true)}"
     )
 
     {

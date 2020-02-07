@@ -2,28 +2,30 @@ defmodule ParallelDownload.DownloadTask do
   require Logger
   alias ParallelDownload.HTTPUtils
 
-  def chunk_request(url, headers, chunk_file_path, index) do
-    opts = [
-      {:stream, chunk_file_path |> String.to_charlist()},
-      {:body_format, :binary}
-    ]
+  @spec chunk_request(tuple(), keyword(), keyword(), non_neg_integer()) ::
+          {:ok, binary(), non_neg_integer()} | {:error, atom(), term()}
+  def chunk_request(request, http_opts, opts, index) do
+    Logger.info(
+      "Start download chunk by request: #{inspect(request, pretty: true)}, http_opts: #{
+        inspect(http_opts, pretty: true)
+      }, index: #{index}, opts: #{inspect(opts, pretty: true)}"
+    )
 
-    Logger.info("Start download chunk by url: #{url},
-      headers: #{inspect(headers, pretty: true)},
-      chunk file path: #{inspect(chunk_file_path)},
-      index: #{index}")
-
-    request = HTTPUtils.request_for_url(url, headers)
-
-    :httpc.request(:get, request, [], opts)
+    :httpc.request(:get, request, http_opts, opts)
     |> case do
       {:ok, :saved_to_file} ->
+        chunk_file_path = HTTPUtils.chunk_filepath_from_options(opts)
         Logger.info("Successfully saved to file #{inspect(chunk_file_path)}")
         {:ok, chunk_file_path, index}
 
       {:error, reason} ->
-        Logger.error("Error of chunk downloading by url: #{url}, error: #{inspect(reason)} ")
-        {:error, reason}
+        Logger.error(
+          "Error of chunk downloading by request: #{inspect(request, pretty: true)}, error: #{
+            inspect(reason)
+          } "
+        )
+
+        {:error, :server_error, reason}
     end
   end
 end

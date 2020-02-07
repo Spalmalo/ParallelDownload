@@ -18,10 +18,25 @@ defmodule ParallelDownload.HTTPUtils do
   end
 
   @doc """
-  Returns request struct for httpc for given url and headers list.
+  Returns value of :stream key contains filepath to chunk file from given kywords
+  """
+  @spec chunk_filepath_from_options([keyword()]) :: binary()
+  def chunk_filepath_from_options(opts) do
+    opts
+    |> Keyword.get(:stream)
+    |> List.to_string()
+  end
+
+  @doc """
+  Returns request struct for httpc for given url and header or headers list.
   """
   @spec request_for_url(binary(), list) :: {charlist(), list}
-  def request_for_url(url, headers \\ []) when is_binary(url) do
+  def request_for_url(url) when is_binary(url), do: request_for_url(url, [])
+
+  def request_for_url(url, header) when is_binary(url) and not is_list(header),
+    do: request_for_url(url, [header])
+
+  def request_for_url(url, headers) when is_binary(url) do
     {
       url |> String.to_charlist(),
       headers
@@ -29,7 +44,31 @@ defmodule ParallelDownload.HTTPUtils do
   end
 
   @doc """
-  Computes byte offsets and returns headers list for range request compatible with :httpc.
+  Returns Options for :httpc.
+  """
+  @spec options(binary() | Path.t()) :: list()
+  def options(chunk_file_path) do
+    [
+      {:stream, chunk_file_path |> String.to_charlist()},
+      {:body_format, :binary}
+    ]
+  end
+
+  @doc """
+  Returns HTTP_Options for :httpc.
+  """
+  @spec http_options(keyword()) :: keyword()
+  def http_options(opts) do
+    [{:request_timeout, request_timeout}, {:connect_timeout, connect_timeout}] = opts
+
+    [
+      {:timeout, request_timeout},
+      {:connect_timeout, connect_timeout}
+    ]
+  end
+
+  @doc """
+  Calculates byte offsets and returns headers list for range request compatible with :httpc.
   If chunk_size bigger than content_length returns one header for range from 0 to chunk_size.
   Returns empty list if content_length is 0.
   Returns list with tuples {"Range" , "bytes=offset-length"}.
@@ -88,7 +127,7 @@ defmodule ParallelDownload.HTTPUtils do
   @doc """
   Returns "content-length" header value.
   """
-  @spec content_length([tuple()]) :: pos_integer()
+  @spec content_length([tuple()]) :: non_neg_integer()
   def content_length(data) do
     data
     |> Enum.find(fn {key, _} -> key == 'content-length' end)
