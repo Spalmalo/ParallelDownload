@@ -144,10 +144,16 @@ defmodule ParallelDownload.HTTPUtils do
     URI.parse(url)
     |> Map.from_struct()
     |> get_in([:path])
-    |> Path.basename()
     |> case do
-      "" -> nil
-      name -> name
+      nil ->
+        nil
+
+      path ->
+        Path.basename(path)
+        |> case do
+          "" -> nil
+          name -> name
+        end
     end
   end
 

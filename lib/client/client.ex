@@ -57,6 +57,10 @@ defmodule ParallelDownload.HTTPClient do
       {_, false, _} ->
         send(parent_pid, {:error, :not_supported})
         to_kurt_kobain()
+
+      {:error, reason} ->
+        send(parent_pid, {:error, :server_error, reason})
+        to_kurt_kobain()
     end
   end
 
@@ -128,3 +132,4 @@ defmodule ParallelDownload.HTTPClient do
     send(self(), :kill)
   end
 end
+

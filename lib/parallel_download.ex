@@ -22,7 +22,7 @@ defmodule ParallelDownload do
     * `:connect_timeout` - Connection time-out time, used during the initial request, when the client is connecting to the server. Default is 20 minutes.
 
   Returns {:ok, filepath} where filepath is path to downloaded file.
-  Returns {:error, reason} in error cases.
+  Returns {:error, atom} or {:error, atom, reason} in error cases.
   Errors might be:
     * `:url_not_valid` - given url is not valid.
     * `:enoent` - given directory is not exists.
@@ -42,6 +42,8 @@ defmodule ParallelDownload do
     download_file(url, chunk_size_bytes, dir_to_download, validate_filename("", url), opts)
   end
 
+  @spec download_file(binary(), non_neg_integer(), binary(), binary(), keyword()) ::
+          {:error, atom()} | {:error, atom(), term()} | {:ok, binary()}
   def download_file(url, chunk_size_bytes, dir_to_download, filename \\ "", opts \\ [])
       when is_binary(url) and is_integer(chunk_size_bytes) and is_binary(dir_to_download) and
              is_binary(filename) do
@@ -68,6 +70,9 @@ defmodule ParallelDownload do
 
       {:error, reason} ->
         {:error, reason}
+
+      {:error, :server_error, reason} ->
+        {:error, :server_error, reason}
 
       {:DOWN, ^ref, _, _proc, reason} ->
         Process.demonitor(ref, [:flush])

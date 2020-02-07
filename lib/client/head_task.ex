@@ -18,16 +18,25 @@ defmodule ParallelDownload.HeadTask do
   def head_request(request, http_opts) do
     Logger.info("Start HEAD request: #{inspect(request)} ")
 
-    {:ok, {status, response_data, _} = response} = :httpc.request(:head, request, http_opts, [])
+    :httpc.request(:head, request, http_opts, [])
+    |> case do
+      {:ok, {status, response_data, _} = response} ->
+        Logger.info(
+          "Response for HEAD request #{inspect(request)}: #{inspect(response, pretty: true)}"
+        )
 
-    Logger.info(
-      "Response for HEAD request #{inspect(request)}: #{inspect(response, pretty: true)}"
-    )
+        {
+          HTTPUtils.http_status_ok?(status),
+          HTTPUtils.accept_range?(response_data),
+          HTTPUtils.content_length(response_data)
+        }
 
-    {
-      HTTPUtils.http_status_ok?(status),
-      HTTPUtils.accept_range?(response_data),
-      HTTPUtils.content_length(response_data)
-    }
+      {:error, reason} ->
+        Logger.error(
+          "Error for head request: #{inspect(request, pretty: true)}, error: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
   end
 end
