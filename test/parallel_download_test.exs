@@ -30,6 +30,13 @@ defmodule ParallelDownloadTest do
                  3_000_000,
                  dir_path
                )
+
+      assert {:error, :server_error, _reason} =
+               ParallelDownload.download_file(
+                 "http://100Mb.dat",
+                 3_000_000,
+                 dir_path
+               )
     end
   end
 
