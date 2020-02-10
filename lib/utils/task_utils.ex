@@ -8,7 +8,7 @@ defmodule ParallelDownload.TaskUtils do
 
   def extract_chunk_files(results) do
     results
-    |> Enum.sort(fn {_, _, index1}, {_, _, index2} -> index1 < index2 end)
-    |> Enum.map(fn {_, p, _} -> p end)
+    |> Enum.sort(fn {_, index1}, {_, index2} -> index1 < index2 end)
+    |> Enum.map(fn {p, _} -> p end)
   end
 end

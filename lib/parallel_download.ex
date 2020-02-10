@@ -60,9 +60,8 @@ defmodule ParallelDownload do
   end
 
   def start_client_under_supervisor(url, chunk_size_bytes, filepath, opts) do
-    {:ok, pid} = Supervisor.start_client({self()})
+    {:ok, pid} = Supervisor.start_client({self(), url, chunk_size_bytes, filepath, opts})
     ref = Process.monitor(pid)
-    GenServer.cast(pid, {:download, url, chunk_size_bytes, filepath, opts})
 
     receive do
       {:ok, path_to_file} ->

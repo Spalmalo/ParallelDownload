@@ -5,63 +5,31 @@ defmodule ParallelDownload.HTTPClient do
   use GenServer, restart: :transient
   require Logger
 
-  alias ParallelDownload.DownloadTask
-  alias ParallelDownload.HeadTask
   alias ParallelDownload.HTTPUtils
   alias ParallelDownload.FileUtils
   alias ParallelDownload.TaskUtils
+  alias ParallelDownload.TaskSupervisor
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args)
   end
 
   @impl true
-  def init({parent_pid}) do
-    {:ok, %{parent_pid: parent_pid}}
-  end
+  def init({parent_pid, url, chunk_size_bytes, path_to_save, timeout_opts}) do
+    {:ok, supervisor_pid} = TaskSupervisor.start_link()
+    {:ok, _} = start_head_request(url, timeout_opts)
 
-  @spec run_request(binary(), pos_integer(), binary() | Path.t(), pid, keyword()) :: any()
-  def run_request(url, chunk_size_bytes, path_to_save, parent_pid, timeout_opts) do
-    Logger.info(
-      "Start to download file from url: #{url}, chunk size: #{chunk_size_bytes}, path to save: #{
-        path_to_save
-      }"
-    )
-
-    task_timeout = Application.get_env(:parallel_download, :task_await_timeout)
-
-    start_head_request(url, task_timeout, timeout_opts)
-    |> case do
-      {true, true, content_length} ->
-        FileUtils.create_tmp_dir!()
-
-        start_parallel_downloads(
-          url,
-          content_length,
-          chunk_size_bytes,
-          task_timeout,
-          timeout_opts
-        )
-        |> TaskUtils.extract_chunk_files()
-        |> FileUtils.merge_files!(path_to_save)
-
-        Logger.info("Successfully merged chunk files in to: #{path_to_save}")
-
-        send(parent_pid, {:ok, path_to_save})
-        to_kurt_kobain()
-
-      {false, _, _} ->
-        send(parent_pid, {:error, :server_error})
-        to_kurt_kobain()
-
-      {_, false, _} ->
-        send(parent_pid, {:error, :not_supported})
-        to_kurt_kobain()
-
-      {:error, reason} ->
-        send(parent_pid, {:error, :server_error, reason})
-        to_kurt_kobain()
-    end
+    {:ok,
+     %{
+       parent_pid: parent_pid,
+       url: url,
+       chunk_size: chunk_size_bytes,
+       path_to_save: path_to_save,
+       timeout_opts: timeout_opts,
+       supervisor_pid: supervisor_pid,
+       chunks: [],
+       chunks_count: 0
+     }}
   end
 
   @doc """
@@ -69,13 +37,38 @@ defmodule ParallelDownload.HTTPClient do
   Request to check if we can download file by given url.
   Returns tuple.
   """
-  @spec start_head_request(binary(), timeout(), keyword()) :: any()
-  def start_head_request(url, task_timeout, timeout_opts) do
+  @spec start_head_request(binary(), keyword()) :: any()
+  def start_head_request(url, timeout_opts) do
     request = HTTPUtils.request_for_url(url)
     http_options = HTTPUtils.http_options(timeout_opts)
+    TaskSupervisor.start_head_task([request, http_options, self()])
+  end
 
-    Task.async(fn -> HeadTask.head_request(request, http_options) end)
-    |> Task.await(task_timeout)
+  def handle_head_response({:error, reason}, %{parent_pid: parent_pid} = state) do
+    send(parent_pid, {:error, :server_error, reason})
+    to_kurt_kobain()
+    state
+  end
+
+  def handle_head_response({false, _, _}, %{parent_pid: parent_pid} = state) do
+    send(parent_pid, {:error, :server_error})
+    to_kurt_kobain()
+    state
+  end
+
+  def handle_head_response({_, false, _}, %{parent_pid: parent_pid} = state) do
+    send(parent_pid, {:error, :not_supported})
+    to_kurt_kobain()
+    state
+  end
+
+  def handle_head_response(
+        {true, true, content_length},
+        %{url: url, chunk_size: chunk_size_bytes, timeout_opts: timeout_opts} = state
+      ) do
+    FileUtils.create_tmp_dir!()
+    tasks = start_parallel_downloads(url, content_length, chunk_size_bytes, timeout_opts)
+    Map.put(state, :chunks_count, length(tasks))
   end
 
   @doc """
@@ -86,10 +79,9 @@ defmodule ParallelDownload.HTTPClient do
           binary(),
           non_neg_integer(),
           non_neg_integer(),
-          timeout(),
           keyword()
-        ) :: any()
-  def start_parallel_downloads(url, content_length, chunk_size, task_timeout, timeout_opts) do
+        ) :: list()
+  def start_parallel_downloads(url, content_length, chunk_size, timeout_opts) do
     http_options = HTTPUtils.http_options(timeout_opts)
 
     TaskUtils.tasks_with_order(content_length, chunk_size)
@@ -99,10 +91,46 @@ defmodule ParallelDownload.HTTPClient do
         |> HTTPUtils.options()
 
       request = HTTPUtils.request_for_url(url, header)
-
-      Task.async(fn -> DownloadTask.chunk_request(request, http_options, options, index) end)
+      TaskSupervisor.start_download_task([request, http_options, options, index, self()])
     end)
-    |> Enum.map(&Task.await(&1, task_timeout))
+  end
+
+  def handle_chunk_response({:ok, path_to_file, index}, %{chunks: chunks} = state) do
+    state
+    |> Map.put(:chunks, chunks ++ [{path_to_file, index}])
+  end
+
+  @impl true
+  def handle_call({:head_request, response}, _from, state) do
+    new_state = handle_head_response(response, state)
+
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call({:chunk_request, response}, _from, state) do
+    new_state = handle_chunk_response(response, state)
+
+    case new_state do
+      %{
+        chunks_count: chunks_count,
+        chunks: chunks,
+        path_to_save: path_to_save,
+        parent_pid: parent_pid
+      }
+      when length(chunks) == chunks_count ->
+        TaskUtils.extract_chunk_files(chunks)
+        |> FileUtils.merge_files!(path_to_save)
+
+        Logger.info("Successfully merged chunk files in to: #{path_to_save}")
+
+        send(parent_pid, {:ok, path_to_save})
+        to_kurt_kobain()
+        {:reply, :ok, new_state}
+
+      _ ->
+        {:reply, :ok, new_state}
+    end
   end
 
   @impl true
@@ -111,20 +139,12 @@ defmodule ParallelDownload.HTTPClient do
   end
 
   @impl true
-  def handle_cast(
-        {:download, url, chunk_size_bytes, path_to_save, opts},
-        %{parent_pid: pid} = state
-      ) do
-    run_request(url, chunk_size_bytes, path_to_save, pid, opts)
-    {:noreply, state}
-  end
-
-  @impl true
-  def terminate(reason, state) do
+  def terminate(reason, %{supervisor_pid: supervisor_pid} = state) do
     Logger.info(
       "HTTPClient is terminating with reason: #{inspect(reason)}, state: #{inspect(state)}"
     )
 
+    TaskSupervisor.stop(supervisor_pid)
     state
   end
 
@@ -132,4 +152,3 @@ defmodule ParallelDownload.HTTPClient do
     send(self(), :kill)
   end
 end
-

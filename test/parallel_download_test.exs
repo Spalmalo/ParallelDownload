@@ -4,22 +4,22 @@ defmodule ParallelDownloadTest do
 
   @tag timeout: 300_000
   describe "Test downloading of files ::" do
-    # test "test downloading of file from http://ovh.net/files", context do
-    #   dir_path = context[:results_dir]
+    test "test downloading of file from http://ovh.net/files", context do
+      dir_path = context[:results_dir]
 
-    #   assert {:ok, filepath} =
-    #            ParallelDownload.download_file(
-    #              "http://ovh.net/files/100Mb.dat",
-    #              3_000_000,
-    #              dir_path
-    #            )
+      assert {:ok, filepath} =
+               ParallelDownload.download_file(
+                 "http://ovh.net/files/100Mb.dat",
+                 3_000_000,
+                 dir_path
+               )
 
-    #   assert Path.join(dir_path, "100Mb.dat") == filepath
+      assert Path.join(dir_path, "100Mb.dat") == filepath
 
-    #   md5hash = TestHelper.md5(filepath)
+      md5hash = TestHelper.md5(filepath)
 
-    #   assert md5hash == "791d723ffb95645c567ccad31b4435b3"
-    # end
+      assert md5hash == "791d723ffb95645c567ccad31b4435b3"
+    end
 
     test "should return :server_error", context do
       dir_path = context[:results_dir]
