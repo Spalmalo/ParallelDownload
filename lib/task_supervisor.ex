@@ -1,13 +1,13 @@
 defmodule ParallelDownload.TaskSupervisor do
   @moduledoc """
-  Dynamic supervisor for download tasks: ParallelDownload.HeadTask and ParallelDownload.DownloadTask.
-  Since it starts dynamically for each ParallelDownload.HTTPClient, it doesn't use name registration.
+  Dynamic supervisor for download tasks: `ParallelDownload.HeadTask` and `ParallelDownload.DownloadTask`.
+  Since it starts dynamically for each `ParallelDownload.HTTPClient`, it doesn't use name registration.
   """
   use DynamicSupervisor
 
   @doc """
   Starts TaskSupervisor and passes given arguments.
-  Returns Supervisor.on_start()
+  Returns `Supervisor.on_start()`
   """
   @spec start_link(any) :: Supervisor.on_start()
   def start_link(arg \\ %{}) do
@@ -15,8 +15,8 @@ defmodule ParallelDownload.TaskSupervisor do
   end
 
   @doc """
-  Starts ParallelDownload.HeadTask under supervisor and passes given arguments.
-  Returns Supervisor.on_start_child()
+  Starts `ParallelDownload.HeadTask` under supervisor and passes given arguments.
+  Returns `Supervisor.on_start_child()`
   """
   @spec start_head_task(pid(), any()) :: Supervisor.on_start_child()
   def start_head_task(supervisor_pid, args) do
@@ -25,8 +25,8 @@ defmodule ParallelDownload.TaskSupervisor do
   end
 
   @doc """
-  Starts ParallelDownload.DownloadTask under supervisor and passes given arguments.
-  Returns Supervisor.on_start_child()
+  Starts `ParallelDownload.DownloadTask` under supervisor and passes given arguments.
+  Returns `Supervisor.on_start_child()`
   """
   @spec start_download_task(pid(), any()) :: Supervisor.on_start_child()
   def start_download_task(supervisor_pid, args) do

@@ -1,8 +1,7 @@
 defmodule ParallelDownload do
   @moduledoc """
   Parallel Downloader allows you to download files in chunks and in parallel way.
-  Uses :httpc inside.
-
+  Uses `:httpc` inside.
   """
 
   require Logger
@@ -13,16 +12,19 @@ defmodule ParallelDownload do
 
   @doc """
   Downloads and saves file from given url to the given path.
-  Set chunk's size in bytes.
-  Set directory where downloaded file will be saved.
-  Set file name for downloading file. If this parameter is not set then app tries to extract filename form url and use it.
+  Pass chunk's size in bytes.
+  Pass directory where downloaded file will be saved.
+  Pass file name for downloading file.
+  If this parameter is not set then app tries to extract filename form url and use it.
   If this not works it uses randomly generated file name.
-  Alse there are next availabale options:
+
+  Also there are next availabale options:
     * `:request_timeout` - Time-out time for the request. The clock starts ticking when the request is sent. Time is in milliseconds. Default is 20 minutes.
     * `:connect_timeout` - Connection time-out time, used during the initial request, when the client is connecting to the server. Default is 20 minutes.
 
-  Returns {:ok, filepath} where filepath is path to downloaded file.
-  Returns {:error, atom} or {:error, atom, reason} in error cases.
+  Returns `{:ok, filepath}` where filepath is path to downloaded file.
+
+  Returns `{:error, atom}` or `{:error, atom, reason}` in error cases.
   Errors might be:
     * `:url_not_valid` - given url is not valid.
     * `:enoent` - given directory is not exists.
@@ -59,6 +61,11 @@ defmodule ParallelDownload do
     end
   end
 
+  @doc """
+  Starts `ParallelDownload.HTTPClient` process, passes given arguments in to it and monitors responses.
+  """
+  @spec start_client(binary(), non_neg_integer(), binary(), keyword()) ::
+          {:error, any} | {:ok, any} | {:error, :server_error, any}
   def start_client(url, chunk_size_bytes, filepath, opts) do
     {:ok, pid} = HTTPClient.start_link({self(), url, chunk_size_bytes, filepath, opts})
 
