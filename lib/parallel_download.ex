@@ -9,7 +9,7 @@ defmodule ParallelDownload do
 
   alias ParallelDownload.HTTPUtils
   alias ParallelDownload.FileUtils
-  alias ParallelDownload.Supervisor
+  alias ParallelDownload.HTTPClient
 
   @doc """
   Downloads and saves file from given url to the given path.
@@ -50,7 +50,7 @@ defmodule ParallelDownload do
     with :ok <- HTTPUtils.valid_url(url),
          :ok <- FileUtils.validate_dir?(dir_to_download) do
       filepath = Path.join(dir_to_download, filename)
-      start_client_under_supervisor(url, chunk_size_bytes, filepath, opts)
+      start_client(url, chunk_size_bytes, filepath, opts)
     else
       {:error, :url_not_valid} -> {:error, :url_not_valid}
       {:error, :enoent} -> {:error, :enoent}
@@ -59,8 +59,9 @@ defmodule ParallelDownload do
     end
   end
 
-  def start_client_under_supervisor(url, chunk_size_bytes, filepath, opts) do
-    {:ok, pid} = Supervisor.start_client({self(), url, chunk_size_bytes, filepath, opts})
+  def start_client(url, chunk_size_bytes, filepath, opts) do
+    {:ok, pid} = HTTPClient.start_link({self(), url, chunk_size_bytes, filepath, opts})
+
     ref = Process.monitor(pid)
 
     receive do
@@ -76,7 +77,6 @@ defmodule ParallelDownload do
       {:DOWN, ^ref, _, _proc, reason} ->
         Process.demonitor(ref, [:flush])
         {:error, reason}
-        # code
     end
   end
 

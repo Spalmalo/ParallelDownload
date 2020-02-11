@@ -16,6 +16,8 @@ defmodule ParallelDownload.HTTPClient do
 
   @impl true
   def init({parent_pid, url, chunk_size_bytes, path_to_save, timeout_opts}) do
+    :inets.start()
+    :ssl.start()
     {:ok, supervisor_pid} = TaskSupervisor.start_link()
     {:ok, _} = start_head_request(url, timeout_opts)
 
@@ -144,6 +146,8 @@ defmodule ParallelDownload.HTTPClient do
       "HTTPClient is terminating with reason: #{inspect(reason)}, state: #{inspect(state)}"
     )
 
+    :inets.stop()
+    :ssl.stop()
     TaskSupervisor.stop(supervisor_pid)
     state
   end
