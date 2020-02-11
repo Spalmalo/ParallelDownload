@@ -19,7 +19,7 @@ defmodule ParallelDownload.HTTPClient do
     :inets.start()
     :ssl.start()
     {:ok, supervisor_pid} = TaskSupervisor.start_link()
-    {:ok, _} = start_head_request(url, timeout_opts)
+    {:ok, _} = start_head_request(url, timeout_opts, supervisor_pid)
 
     {:ok,
      %{
@@ -39,11 +39,11 @@ defmodule ParallelDownload.HTTPClient do
   Request to check if we can download file by given url.
   Returns tuple.
   """
-  @spec start_head_request(binary(), keyword()) :: any()
-  def start_head_request(url, timeout_opts) do
+  @spec start_head_request(binary(), keyword(), pid()) :: any()
+  def start_head_request(url, timeout_opts, supervisor_pid) do
     request = HTTPUtils.request_for_url(url)
     http_options = HTTPUtils.http_options(timeout_opts)
-    TaskSupervisor.start_head_task([request, http_options, self()])
+    TaskSupervisor.start_head_task(supervisor_pid, [request, http_options, self()])
   end
 
   def handle_head_response({:error, reason}, %{parent_pid: parent_pid} = state) do
@@ -66,10 +66,24 @@ defmodule ParallelDownload.HTTPClient do
 
   def handle_head_response(
         {true, true, content_length},
-        %{url: url, chunk_size: chunk_size_bytes, timeout_opts: timeout_opts} = state
+        %{
+          url: url,
+          chunk_size: chunk_size_bytes,
+          timeout_opts: timeout_opts,
+          supervisor_pid: supervisor_pid
+        } = state
       ) do
     FileUtils.create_tmp_dir!()
-    tasks = start_parallel_downloads(url, content_length, chunk_size_bytes, timeout_opts)
+
+    tasks =
+      start_parallel_downloads(
+        url,
+        content_length,
+        chunk_size_bytes,
+        timeout_opts,
+        supervisor_pid
+      )
+
     Map.put(state, :chunks_count, length(tasks))
   end
 
@@ -81,9 +95,10 @@ defmodule ParallelDownload.HTTPClient do
           binary(),
           non_neg_integer(),
           non_neg_integer(),
-          keyword()
+          keyword(),
+          pid()
         ) :: list()
-  def start_parallel_downloads(url, content_length, chunk_size, timeout_opts) do
+  def start_parallel_downloads(url, content_length, chunk_size, timeout_opts, supervisor_pid) do
     http_options = HTTPUtils.http_options(timeout_opts)
 
     TaskUtils.tasks_with_order(content_length, chunk_size)
@@ -93,7 +108,14 @@ defmodule ParallelDownload.HTTPClient do
         |> HTTPUtils.options()
 
       request = HTTPUtils.request_for_url(url, header)
-      TaskSupervisor.start_download_task([request, http_options, options, index, self()])
+
+      TaskSupervisor.start_download_task(supervisor_pid, [
+        request,
+        http_options,
+        options,
+        index,
+        self()
+      ])
     end)
   end
 
