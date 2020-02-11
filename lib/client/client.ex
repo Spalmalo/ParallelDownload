@@ -1,6 +1,9 @@
 defmodule ParallelDownload.HTTPClient do
   @moduledoc """
-  API on :httpc
+  Module starts downloading tasks, merges chunk files in to resulting one and returns it.
+  Uses GenServer's transient strategy.
+  Starts `ParallelDownload.TaskSupervisor` and `:inets` and `:ssl` on GenServer init/1 callback.
+  Each task is started under `ParallelDownload.TaskSupervisor`.
   """
   use GenServer, restart: :transient
   require Logger
@@ -35,8 +38,7 @@ defmodule ParallelDownload.HTTPClient do
   end
 
   @doc """
-  Starts async HEAD request by given url.
-  Request to check if we can download file by given url.
+  Starts async `HEAD` request by given url to find out if we can download file by given url.
   Returns tuple.
   """
   @spec start_head_request(binary(), keyword(), pid()) :: any()
@@ -46,6 +48,12 @@ defmodule ParallelDownload.HTTPClient do
     TaskSupervisor.start_head_task(supervisor_pid, [request, http_options, self()])
   end
 
+  @doc """
+  Handles response from `HEAD` request.
+  if file can be downloaded in chunks starts downloading.
+  In error cases or if server doesn't supports chunk downloading sends error request to parent pid.
+  """
+  @spec handle_head_response({:error, any} | {any, any, any}, map) :: map
   def handle_head_response({:error, reason}, %{parent_pid: parent_pid} = state) do
     send(parent_pid, {:error, :server_error, reason})
     to_kurt_kobain()
@@ -88,8 +96,9 @@ defmodule ParallelDownload.HTTPClient do
   end
 
   @doc """
-  Starts async requests to parallel download by given url.
-  It creates async Tasks for each request. Number of requests depends on content length and chunk size.
+  Starts async requests to parallel download chunks by given url.
+  It creates async `Tasks` for each request. Number of requests depends on content length and chunk size.
+  Creates temporary directory to keep chunk files.
   """
   @spec start_parallel_downloads(
           binary(),
@@ -119,29 +128,26 @@ defmodule ParallelDownload.HTTPClient do
     end)
   end
 
+  @doc """
+  Handles responses from chunk download tasks.
+
+  Stores response in state and then checks if all chunks are downloaded.
+  If they are downloaded merges chunk files in to one and sends `{:ok, path_to_save}` to  parent pid.
+
+  Sends error request to parent pid in error cases.
+  """
+  @spec handle_chunk_response({:ok, any, any} | {:error, :server_error, any()}, map()) ::
+          map()
   def handle_chunk_response({:ok, path_to_file, index}, %{chunks: chunks} = state) do
     state
     |> Map.put(:chunks, chunks ++ [{path_to_file, index}])
-  end
-
-  @impl true
-  def handle_call({:head_request, response}, _from, state) do
-    new_state = handle_head_response(response, state)
-
-    {:reply, :ok, new_state}
-  end
-
-  @impl true
-  def handle_call({:chunk_request, response}, _from, state) do
-    new_state = handle_chunk_response(response, state)
-
-    case new_state do
+    |> case do
       %{
         chunks_count: chunks_count,
         chunks: chunks,
         path_to_save: path_to_save,
         parent_pid: parent_pid
-      }
+      } = new_state
       when length(chunks) == chunks_count ->
         TaskUtils.extract_chunk_files(chunks)
         |> FileUtils.merge_files!(path_to_save)
@@ -150,11 +156,32 @@ defmodule ParallelDownload.HTTPClient do
 
         send(parent_pid, {:ok, path_to_save})
         to_kurt_kobain()
-        {:reply, :ok, new_state}
+        new_state
 
-      _ ->
-        {:reply, :ok, new_state}
+      new_state ->
+        new_state
     end
+  end
+
+  def handle_chunk_response(
+        {:error, :server_error, reason},
+        %{parent_pid: parent_pid} = state
+      ) do
+    send(parent_pid, {:error, :server_error, reason})
+    to_kurt_kobain()
+    state
+  end
+
+  @impl true
+  def handle_call({:head_request, response}, _from, state) do
+    new_state = handle_head_response(response, state)
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call({:chunk_request, response}, _from, state) do
+    new_state = handle_chunk_response(response, state)
+    {:reply, :ok, new_state}
   end
 
   @impl true
