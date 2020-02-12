@@ -34,7 +34,7 @@ defmodule ParallelDownload.HTTPClient do
        supervisor_pid: supervisor_pid,
        chunks: [],
        chunks_count: 0
-     }}
+     }, :hibernate}
   end
 
   @doc """
@@ -50,14 +50,14 @@ defmodule ParallelDownload.HTTPClient do
 
   @doc """
   Handles response from `HEAD` request.
-  if file can be downloaded in chunks starts downloading.
+  if file can be downloaded in chunks starts downloading and hibernates.
   In error cases or if server doesn't supports chunk downloading sends error request to parent pid and starts killing itself.
 
-  Returns `{:noreply, state}` if response is correct and chunk downloading started.
+  Returns `{:noreply, state, hibernate}` if response is correct and chunk downloading started.
   Returns `{:stop, :normal, state}` if there was an error or server doesn't support chunk downloading.
   """
   @spec handle_head_response({:error, any} | {any, any, any}, map) ::
-          {:stop, :normal, map()} | {:noreply, map()}
+          {:stop, :normal, map()} | {:noreply, map(), :hibernate}
   def handle_head_response({:error, reason}, %{parent_pid: parent_pid} = state) do
     send(parent_pid, {:error, :server_error, reason})
     {:stop, :normal, state}
@@ -94,7 +94,7 @@ defmodule ParallelDownload.HTTPClient do
       )
 
     new_state = Map.put(state, :chunks_count, length(tasks))
-    {:noreply, new_state}
+    {:noreply, new_state, :hibernate}
   end
 
   @doc """
@@ -163,7 +163,9 @@ defmodule ParallelDownload.HTTPClient do
         {:stop, :normal, new_state}
 
       new_state ->
-        {:noreply, new_state}
+        #
+        # Chunks downloading not complete, hibernate and wait for next responses.
+        {:noreply, new_state, :hibernate}
     end
   end
 
