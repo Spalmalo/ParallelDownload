@@ -51,25 +51,26 @@ defmodule ParallelDownload.HTTPClient do
   @doc """
   Handles response from `HEAD` request.
   if file can be downloaded in chunks starts downloading.
-  In error cases or if server doesn't supports chunk downloading sends error request to parent pid.
+  In error cases or if server doesn't supports chunk downloading sends error request to parent pid and starts killing itself.
+
+  Returns `{:noreply, state}` if response is correct and chunk downloading started.
+  Returns `{:stop, :normal, state}` if there was an error or server doesn't support chunk downloading.
   """
-  @spec handle_head_response({:error, any} | {any, any, any}, map) :: map
+  @spec handle_head_response({:error, any} | {any, any, any}, map) ::
+          {:stop, :normal, map()} | {:noreply, map()}
   def handle_head_response({:error, reason}, %{parent_pid: parent_pid} = state) do
     send(parent_pid, {:error, :server_error, reason})
-    to_kurt_kobain()
-    state
+    {:stop, :normal, state}
   end
 
   def handle_head_response({false, _, _}, %{parent_pid: parent_pid} = state) do
     send(parent_pid, {:error, :server_error})
-    to_kurt_kobain()
-    state
+    {:stop, :normal, state}
   end
 
   def handle_head_response({_, false, _}, %{parent_pid: parent_pid} = state) do
     send(parent_pid, {:error, :not_supported})
-    to_kurt_kobain()
-    state
+    {:stop, :normal, state}
   end
 
   def handle_head_response(
@@ -92,7 +93,8 @@ defmodule ParallelDownload.HTTPClient do
         supervisor_pid
       )
 
-    Map.put(state, :chunks_count, length(tasks))
+    new_state = Map.put(state, :chunks_count, length(tasks))
+    {:noreply, new_state}
   end
 
   @doc """
@@ -132,12 +134,15 @@ defmodule ParallelDownload.HTTPClient do
   Handles responses from chunk download tasks.
 
   Stores response in state and then checks if all chunks are downloaded.
-  If they are downloaded merges chunk files in to one and sends `{:ok, path_to_save}` to  parent pid.
+  If they are downloaded merges chunk files in to one and sends `{:ok, path_to_save}` to  parent pid and starts killing itself..
 
   Sends error request to parent pid in error cases.
+
+  Returns `{:noreply, state}` if response is correct and chunk downloading started.
+  Returns `{:stop, :normal, state}` if there was an error or server doesn't support chunk downloading.
   """
   @spec handle_chunk_response({:ok, any, any} | {:error, :server_error, any()}, map()) ::
-          map()
+          {:stop, :normal, map()} | {:noreply, map()}
   def handle_chunk_response({:ok, path_to_file, index}, %{chunks: chunks} = state) do
     state
     |> Map.put(:chunks, chunks ++ [{path_to_file, index}])
@@ -155,11 +160,10 @@ defmodule ParallelDownload.HTTPClient do
         Logger.info("Successfully merged chunk files in to: #{path_to_save}")
 
         send(parent_pid, {:ok, path_to_save})
-        to_kurt_kobain()
-        new_state
+        {:stop, :normal, new_state}
 
       new_state ->
-        new_state
+        {:noreply, new_state}
     end
   end
 
@@ -168,26 +172,14 @@ defmodule ParallelDownload.HTTPClient do
         %{parent_pid: parent_pid} = state
       ) do
     send(parent_pid, {:error, :server_error, reason})
-    to_kurt_kobain()
-    state
-  end
-
-  @impl true
-  def handle_cast({:head_request, response}, state) do
-    new_state = handle_head_response(response, state)
-    {:noreply, new_state}
-  end
-
-  @impl true
-  def handle_cast({:chunk_request, response}, state) do
-    new_state = handle_chunk_response(response, state)
-    {:noreply, new_state}
-  end
-
-  @impl true
-  def handle_info(:kill, state) do
     {:stop, :normal, state}
   end
+
+  @impl true
+  def handle_cast({:head_request, response}, state), do: handle_head_response(response, state)
+
+  @impl true
+  def handle_cast({:chunk_request, response}, state), do: handle_chunk_response(response, state)
 
   @impl true
   def terminate(reason, %{supervisor_pid: supervisor_pid} = state) do
@@ -195,13 +187,7 @@ defmodule ParallelDownload.HTTPClient do
       "HTTPClient is terminating with reason: #{inspect(reason)}, state: #{inspect(state)}"
     )
 
-    :inets.stop()
-    :ssl.stop()
     TaskSupervisor.stop(supervisor_pid)
     state
-  end
-
-  defp to_kurt_kobain do
-    send(self(), :kill)
   end
 end
