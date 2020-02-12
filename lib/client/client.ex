@@ -173,15 +173,15 @@ defmodule ParallelDownload.HTTPClient do
   end
 
   @impl true
-  def handle_call({:head_request, response}, _from, state) do
+  def handle_cast({:head_request, response}, state) do
     new_state = handle_head_response(response, state)
-    {:reply, :ok, new_state}
+    {:noreply, new_state}
   end
 
   @impl true
-  def handle_call({:chunk_request, response}, _from, state) do
+  def handle_cast({:chunk_request, response}, state) do
     new_state = handle_chunk_response(response, state)
-    {:reply, :ok, new_state}
+    {:noreply, new_state}
   end
 
   @impl true

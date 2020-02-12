@@ -38,7 +38,7 @@ defmodule ParallelDownload.HeadTask do
           "Response for HEAD request #{inspect(request)}: #{inspect(response, pretty: true)}"
         )
 
-        GenServer.call(
+        GenServer.cast(
           client_pid,
           {:head_request,
            {
@@ -53,7 +53,7 @@ defmodule ParallelDownload.HeadTask do
           "Error for head request: #{inspect(request, pretty: true)}, error: #{inspect(reason)}"
         )
 
-        GenServer.call(client_pid, {:head_request, {:error, reason}})
+        GenServer.cast(client_pid, {:head_request, {:error, reason}})
     end
 
     {:ok, self()}

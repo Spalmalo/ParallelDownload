@@ -38,7 +38,7 @@ defmodule ParallelDownload.DownloadTask do
       {:ok, :saved_to_file} ->
         chunk_file_path = HTTPUtils.chunk_filepath_from_options(opts)
         Logger.info("Successfully saved to file #{inspect(chunk_file_path)}")
-        GenServer.call(client_pid, {:chunk_request, {:ok, chunk_file_path, index}})
+        GenServer.cast(client_pid, {:chunk_request, {:ok, chunk_file_path, index}})
 
       {:error, reason} ->
         Logger.error(
@@ -47,7 +47,7 @@ defmodule ParallelDownload.DownloadTask do
           } "
         )
 
-        GenServer.call(client_pid, {:chunk_request, {:error, :server_error, reason}})
+        GenServer.cast(client_pid, {:chunk_request, {:error, :server_error, reason}})
     end
   end
 end
