@@ -47,7 +47,7 @@ defmodule ParallelDownload.DownloadTask do
           } "
         )
 
-        GenServer.cast(client_pid, {:chunk_request, {:error, :server_error, reason}})
+        raise(RuntimeError, "Chunk downloading error: #{reason}")
     end
   end
 end

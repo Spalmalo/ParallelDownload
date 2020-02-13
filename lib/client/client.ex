@@ -5,7 +5,7 @@ defmodule ParallelDownload.HTTPClient do
   Starts `ParallelDownload.TaskSupervisor` and `:inets` and `:ssl` on GenServer init/1 callback.
   Each task is started under `ParallelDownload.TaskSupervisor`.
   """
-  use GenServer, restart: :transient
+  use GenServer
   require Logger
 
   alias ParallelDownload.HTTPUtils
@@ -23,6 +23,7 @@ defmodule ParallelDownload.HTTPClient do
     :ssl.start()
     {:ok, supervisor_pid} = TaskSupervisor.start_link()
     {:ok, _} = start_head_request(url, timeout_opts, supervisor_pid)
+    Process.flag(:trap_exit, true)
 
     {:ok,
      %{
@@ -175,6 +176,11 @@ defmodule ParallelDownload.HTTPClient do
       ) do
     send(parent_pid, {:error, :server_error, reason})
     {:stop, :normal, state}
+  end
+
+  @impl true
+  def handle_info({:EXIT, _pid, reason}, %{parent_pid: parent_pid} = _state) do
+    send(parent_pid, {:error, :server_error})
   end
 
   @impl true
