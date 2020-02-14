@@ -34,7 +34,8 @@ defmodule ParallelDownload.HTTPClient do
        timeout_opts: timeout_opts,
        supervisor_pid: supervisor_pid,
        chunks: [],
-       chunks_count: 0
+       chunks_count: 0,
+       last_task_error: nil
      }, :hibernate}
   end
 
@@ -59,9 +60,12 @@ defmodule ParallelDownload.HTTPClient do
   """
   @spec handle_head_response({:error, any} | {any, any, any}, map) ::
           {:stop, :normal, map()} | {:noreply, map(), :hibernate}
-  def handle_head_response({:error, reason}, %{parent_pid: parent_pid} = state) do
-    send(parent_pid, {:error, :server_error, reason})
-    {:stop, :normal, state}
+  def handle_head_response({:error, reason}, state) do
+    new_state =
+      state
+      |> Map.put(:last_task_error, reason)
+
+    {:noreply, new_state, :hibernate}
   end
 
   def handle_head_response({false, _, _}, %{parent_pid: parent_pid} = state) do
@@ -115,16 +119,11 @@ defmodule ParallelDownload.HTTPClient do
 
     TaskUtils.tasks_with_order(content_length, chunk_size)
     |> Enum.map(fn {header, index} ->
-      options =
-        FileUtils.create_tmp_file!()
-        |> HTTPUtils.options()
-
       request = HTTPUtils.request_for_url(url, header)
 
       TaskSupervisor.start_download_task(supervisor_pid, [
         request,
         http_options,
-        options,
         index,
         self()
       ])
@@ -170,17 +169,31 @@ defmodule ParallelDownload.HTTPClient do
     end
   end
 
-  def handle_chunk_response(
-        {:error, :server_error, reason},
-        %{parent_pid: parent_pid} = state
-      ) do
-    send(parent_pid, {:error, :server_error, reason})
-    {:stop, :normal, state}
+  def handle_chunk_response({:error, reason}, state) do
+    new_state =
+      state
+      |> Map.put(:last_task_error, reason)
+
+    {:noreply, new_state, :hibernate}
   end
 
   @impl true
-  def handle_info({:EXIT, _pid, reason}, %{parent_pid: parent_pid} = _state) do
-    send(parent_pid, {:error, :server_error})
+  def handle_info(
+        {:EXIT, _pid, reason},
+        %{parent_pid: parent_pid, last_task_error: last_task_error} = state
+      ) do
+    case {reason, last_task_error} do
+      {:shutdown, nil} ->
+        send(parent_pid, {:error, "Unknown runtime error."})
+
+      {:shutdown, last_task_error} ->
+        send(parent_pid, {:error, :server_error, last_task_error})
+
+      {reason, _} ->
+        send(parent_pid, {:error, reason})
+    end
+
+    {:noreply, state}
   end
 
   @impl true
@@ -190,12 +203,11 @@ defmodule ParallelDownload.HTTPClient do
   def handle_cast({:chunk_request, response}, state), do: handle_chunk_response(response, state)
 
   @impl true
-  def terminate(reason, %{supervisor_pid: supervisor_pid} = state) do
+  def terminate(reason, state) do
     Logger.info(
       "HTTPClient is terminating with reason: #{inspect(reason)}, state: #{inspect(state)}"
     )
 
-    TaskSupervisor.stop(supervisor_pid)
     state
   end
 end

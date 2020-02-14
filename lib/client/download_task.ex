@@ -7,6 +7,7 @@ defmodule ParallelDownload.DownloadTask do
   use Task, restart: :transient
   require Logger
   alias ParallelDownload.HTTPUtils
+  alias ParallelDownload.FileUtils
 
   @doc false
   @spec start_link([any]) :: {:ok, pid}
@@ -24,14 +25,17 @@ defmodule ParallelDownload.DownloadTask do
 
   Sends `{:chunk_request, {:error, :server_error, reason}}` call in error cases.
   """
-  @spec run_request(tuple(), keyword(), keyword(), non_neg_integer(), pid()) ::
-          {:ok, binary(), non_neg_integer()} | {:error, atom(), term()}
-  def run_request(request, http_opts, opts, index, client_pid) do
+
+  def run_request(request, http_opts, index, client_pid) do
     Logger.info(
       "Start download chunk by request: #{inspect(request, pretty: true)}, http_opts: #{
         inspect(http_opts, pretty: true)
-      }, index: #{index}, opts: #{inspect(opts, pretty: true)}"
+      }, index: #{index}"
     )
+
+    opts =
+      FileUtils.create_tmp_file!()
+      |> HTTPUtils.options()
 
     :httpc.request(:get, request, http_opts, opts)
     |> case do
@@ -46,7 +50,7 @@ defmodule ParallelDownload.DownloadTask do
             inspect(reason)
           } "
         )
-
+        GenServer.cast(client_pid, {:chunk_request, {:error, reason}})
         raise(RuntimeError, "Chunk downloading error: #{reason}")
     end
   end
