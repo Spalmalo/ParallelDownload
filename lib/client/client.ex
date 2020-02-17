@@ -154,8 +154,10 @@ defmodule ParallelDownload.HTTPClient do
         parent_pid: parent_pid
       } = new_state
       when length(chunks) == chunks_count ->
-        TaskUtils.extract_chunk_files(chunks)
-        |> FileUtils.merge_files!(path_to_save)
+        files = TaskUtils.extract_chunk_files(chunks)
+
+        FileUtils.merge_files!(files, path_to_save)
+        FileUtils.remove_tmp_files(files)
 
         Logger.info("Successfully merged chunk files in to: #{path_to_save}")
 
@@ -203,10 +205,13 @@ defmodule ParallelDownload.HTTPClient do
   def handle_cast({:chunk_request, response}, state), do: handle_chunk_response(response, state)
 
   @impl true
-  def terminate(reason, state) do
+  def terminate(reason, %{chunks: chunks} = state) do
     Logger.info(
       "HTTPClient is terminating with reason: #{inspect(reason)}, state: #{inspect(state)}"
     )
+
+    TaskUtils.extract_chunk_files(chunks)
+    |> FileUtils.remove_tmp_files()
 
     state
   end

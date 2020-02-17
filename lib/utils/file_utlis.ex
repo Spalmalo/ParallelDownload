@@ -41,7 +41,7 @@ defmodule ParallelDownload.FileUtils do
   @doc """
   Merges content of chunk files in to final one.
   If file already exists by given path recreates it.
-  Saves result file by given path. Removes given chunk files after merge.
+  Saves result file by given path.
   Raises File.Error for file operation errors.
   Returns result file path.
   """
@@ -59,8 +59,16 @@ defmodule ParallelDownload.FileUtils do
       |> Stream.run()
     end)
 
+    :ok
+  end
+
+  @doc """
+  Removes given files.
+  """
+  @spec remove_tmp_files(any) :: :ok
+  def remove_tmp_files(files) do
     files
-    |> Enum.each(fn tmp_path -> File.rm!(tmp_path) end)
+    |> Enum.each(fn tmp_path -> File.rm(tmp_path) end)
 
     :ok
   end
