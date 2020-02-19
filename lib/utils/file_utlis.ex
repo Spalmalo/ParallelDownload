@@ -46,6 +46,15 @@ defmodule ParallelDownload.FileUtils do
   Returns result file path.
   """
   @spec merge_files!(list(), binary()) :: :ok
+  def merge_files!([tmp_path], result_file_path) do
+    if File.exists?(result_file_path) do
+      File.rm!(result_file_path)
+    end
+
+    File.rename!(tmp_path, result_file_path)
+    :ok
+  end
+
   def merge_files!(files, result_file_path) do
     if File.exists?(result_file_path) do
       File.rm!(result_file_path)

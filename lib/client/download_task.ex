@@ -25,6 +25,8 @@ defmodule ParallelDownload.DownloadTask do
 
   Sends `{:chunk_request, {:error, :server_error, reason}}` call in error cases.
   """
+  def run_request(request, http_opts, client_pid),
+    do: run_request(request, http_opts, 0, client_pid)
 
   def run_request(request, http_opts, index, client_pid) do
     Logger.info(
@@ -50,6 +52,7 @@ defmodule ParallelDownload.DownloadTask do
             inspect(reason)
           } "
         )
+
         GenServer.cast(client_pid, {:chunk_request, {:error, reason}})
         raise(RuntimeError, "Chunk downloading error: #{reason}")
     end

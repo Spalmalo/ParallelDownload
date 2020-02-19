@@ -73,7 +73,7 @@ defmodule ParallelDownload.HTTPUtils do
   Returns empty list if content_length is 0.
   Returns list with tuples {"Range" , "bytes=offset-length"}.
   """
-  @spec headers_for_chunks(pos_integer(), pos_integer()) :: [{binary, binary}]
+  @spec headers_for_chunks(pos_integer(), pos_integer()) :: [{binary, binary}] | []
   def headers_for_chunks(0, _), do: []
 
   def headers_for_chunks(content_length, 0),

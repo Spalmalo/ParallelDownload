@@ -11,6 +11,9 @@ config :parallel_download, connect_timeout: 20 * 60_000
 # Time-out time for the request. The clock starts ticking when the request is sent. Time is in milliseconds.
 config :parallel_download, request_timeout: 20 * 60_000
 
+# Download file as one piece if server doesn't support chunk downloads
+config :parallel_download, download_unsupported: false
+
 # Download results store directory. Used only in tests
 config :parallel_download, results_dir_path_for_tests: "downloads"
 

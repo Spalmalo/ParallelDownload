@@ -18,9 +18,12 @@ defmodule ParallelDownload.HTTPClient do
   end
 
   @impl true
-  def init({parent_pid, url, chunk_size_bytes, path_to_save, timeout_opts}) do
+  def init({parent_pid, url, chunk_size_bytes, path_to_save, opts}) do
     :inets.start()
     :ssl.start()
+
+    timeout_opts = Keyword.take(opts, [:connect_timeout, :request_timeout])
+
     {:ok, supervisor_pid} = TaskSupervisor.start_link()
     {:ok, _} = start_head_request(url, timeout_opts, supervisor_pid)
     Process.flag(:trap_exit, true)
@@ -35,7 +38,9 @@ defmodule ParallelDownload.HTTPClient do
        supervisor_pid: supervisor_pid,
        chunks: [],
        chunks_count: 0,
-       last_task_error: nil
+       last_task_error: nil,
+       download_unsupported: Keyword.get(opts, :download_unsupported, false),
+       unsupported_file: false
      }, :hibernate}
   end
 
@@ -61,9 +66,7 @@ defmodule ParallelDownload.HTTPClient do
   @spec handle_head_response({:error, any} | {any, any, any}, map) ::
           {:stop, :normal, map()} | {:noreply, map(), :hibernate}
   def handle_head_response({:error, reason}, state) do
-    new_state =
-      state
-      |> Map.put(:last_task_error, reason)
+    new_state = Map.put(state, :last_task_error, reason)
 
     {:noreply, new_state, :hibernate}
   end
@@ -73,7 +76,17 @@ defmodule ParallelDownload.HTTPClient do
     {:stop, :normal, state}
   end
 
-  def handle_head_response({_, false, _}, %{parent_pid: parent_pid} = state) do
+  def handle_head_response({_, false, content_length}, %{download_unsupported: true} = state) do
+    new_state =
+      state
+      |> Map.put(:chunk_size, content_length)
+      |> Map.put(:unsupported_file, true)
+
+    handle_head_response({true, true, content_length}, new_state)
+  end
+
+  def handle_head_response({_, false, _}, %{download_unsupported: false} = state) do
+    %{parent_pid: parent_pid} = state
     send(parent_pid, {:error, :not_supported})
     {:stop, :normal, state}
   end
@@ -84,21 +97,24 @@ defmodule ParallelDownload.HTTPClient do
           url: url,
           chunk_size: chunk_size_bytes,
           timeout_opts: timeout_opts,
-          supervisor_pid: supervisor_pid
+          supervisor_pid: supervisor_pid,
+          unsupported_file: unsupported_file
         } = state
       ) do
     FileUtils.create_tmp_dir!()
 
-    tasks =
+    chunks_count =
       start_parallel_downloads(
         url,
         content_length,
         chunk_size_bytes,
         timeout_opts,
-        supervisor_pid
+        supervisor_pid,
+        unsupported_file
       )
+      |> length()
 
-    new_state = Map.put(state, :chunks_count, length(tasks))
+    new_state = Map.put(state, :chunks_count, chunks_count)
     {:noreply, new_state, :hibernate}
   end
 
@@ -112,9 +128,38 @@ defmodule ParallelDownload.HTTPClient do
           non_neg_integer(),
           non_neg_integer(),
           keyword(),
-          pid()
+          pid(),
+          boolean()
         ) :: list()
-  def start_parallel_downloads(url, content_length, chunk_size, timeout_opts, supervisor_pid) do
+  def start_parallel_downloads(
+        url,
+        content_length,
+        chunk_size,
+        timeout_opts,
+        supervisor_pid,
+        true
+      )
+      when content_length == chunk_size do
+    http_options = HTTPUtils.http_options(timeout_opts)
+    request = HTTPUtils.request_for_url(url)
+
+    [
+      TaskSupervisor.start_download_task(supervisor_pid, [
+        request,
+        http_options,
+        self()
+      ])
+    ]
+  end
+
+  def start_parallel_downloads(
+        url,
+        content_length,
+        chunk_size,
+        timeout_opts,
+        supervisor_pid,
+        false
+      ) do
     http_options = HTTPUtils.http_options(timeout_opts)
 
     TaskUtils.tasks_with_order(content_length, chunk_size)
@@ -186,12 +231,15 @@ defmodule ParallelDownload.HTTPClient do
       ) do
     case {reason, last_task_error} do
       {:shutdown, nil} ->
+        # something bad is happened
         send(parent_pid, {:error, "Unknown runtime error."})
 
       {:shutdown, last_task_error} ->
+        # shutdown because of download tasks error
         send(parent_pid, {:error, :server_error, last_task_error})
 
       {reason, _} ->
+        # other errors handling
         send(parent_pid, {:error, reason})
     end
 

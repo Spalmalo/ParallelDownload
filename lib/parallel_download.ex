@@ -21,6 +21,7 @@ defmodule ParallelDownload do
   Also there are next availabale options:
     * `:request_timeout` - Time-out time for the request. The clock starts ticking when the request is sent. Time is in milliseconds. Default is 20 minutes.
     * `:connect_timeout` - Connection time-out time, used during the initial request, when the client is connecting to the server. Default is 20 minutes.
+    * `:download_unsupported` - if true, downloads file as usual if server returns `Acceprt-ranges: none`. Default is false and it returns `:not_supported` error.
 
   Returns `{:ok, filepath}` where filepath is path to downloaded file.
 
@@ -36,12 +37,13 @@ defmodule ParallelDownload do
   """
   def download_file(url, chunk_size_bytes, dir_to_download)
       when is_binary(url) and is_integer(chunk_size_bytes) and is_binary(dir_to_download) do
-    opts = [
-      request_timeout: Application.get_env(:parallel_download, :request_timeout),
-      connect_timeout: Application.get_env(:parallel_download, :connect_timeout)
-    ]
-
-    download_file(url, chunk_size_bytes, dir_to_download, validate_filename("", url), opts)
+    download_file(
+      url,
+      chunk_size_bytes,
+      dir_to_download,
+      validate_filename("", url),
+      default_opts()
+    )
   end
 
   @spec download_file(binary(), non_neg_integer(), binary(), binary(), keyword()) ::
@@ -51,7 +53,8 @@ defmodule ParallelDownload do
              is_binary(filename) do
     with :ok <- HTTPUtils.valid_url(url),
          :ok <- FileUtils.validate_dir?(dir_to_download) do
-      filepath = Path.join(dir_to_download, filename)
+      opts = Keyword.merge(default_opts(), opts)
+      filepath = Path.join(dir_to_download, validate_filename("", url))
       start_client(url, chunk_size_bytes, filepath, opts)
     else
       {:error, :url_not_valid} -> {:error, :url_not_valid}
@@ -92,5 +95,13 @@ defmodule ParallelDownload do
       "" -> HTTPUtils.filename_from_url(url) || FileUtils.random_filename()
       _ -> Path.basename(filename)
     end
+  end
+
+  defp default_opts do
+    [
+      request_timeout: Application.get_env(:parallel_download, :request_timeout),
+      connect_timeout: Application.get_env(:parallel_download, :connect_timeout),
+      download_unsupported: Application.get_env(:parallel_download, :download_unsupported)
+    ]
   end
 end
