@@ -2,7 +2,8 @@ defmodule ParallelDownload.HTTPClient do
   @moduledoc """
   Module starts downloading tasks, merges chunk files in to resulting one and returns it.
   Uses GenServer's transient strategy.
-  Starts `ParallelDownload.TaskSupervisor` and `:inets` and `:ssl` on GenServer init/1 callback.
+  Starts `ParallelDownload.TaskSupervisor` and `:inets` and `:ssl` on GenServer's init/1 callback.
+  Traps exit.
   Each task is started under `ParallelDownload.TaskSupervisor`.
   """
   use GenServer
@@ -122,6 +123,7 @@ defmodule ParallelDownload.HTTPClient do
   Starts async requests to parallel download chunks by given url.
   It creates async `Tasks` for each request. Number of requests depends on content length and chunk size.
   Creates temporary directory to keep chunk files.
+  if server doesn't support chunk download, starts downloading of file in usual way.
   """
   @spec start_parallel_downloads(
           binary(),
@@ -183,7 +185,7 @@ defmodule ParallelDownload.HTTPClient do
 
   Sends error request to parent pid in error cases.
 
-  Returns `{:noreply, state}` if response is correct and chunk downloading started.
+  Returns `{:noreply, state, :hibernate}` if response is correct and chunk downloading started.
   Returns `{:stop, :normal, state}` if there was an error or server doesn't support chunk downloading.
   """
   @spec handle_chunk_response({:ok, any, any} | {:error, :server_error, any()}, map()) ::
