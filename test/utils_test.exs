@@ -2,7 +2,6 @@ defmodule ParallelDownload.UtilsTest do
   use ExUnit.Case
 
   alias ParallelDownload.HTTPUtils
-  alias ParallelDownload.FileUtils
 
   describe "HTTPUtils module functions tests ::" do
     test "should return list of headers" do
@@ -28,7 +27,6 @@ defmodule ParallelDownload.UtilsTest do
 
       assert "100Mb" == HTTPUtils.filename_from_url("http://ovh.net/files/100Mb")
     end
-
 
     test "url validation tests" do
       assert :ok == HTTPUtils.valid_url("http://vk.com")
